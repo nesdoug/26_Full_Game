@@ -32,8 +32,8 @@
 	.import		_memcpy
 	.import		_delay
 	.import		_set_vram_buffer
-	.import		_multi_vram_buffer_horz
 	.import		_one_vram_buffer
+	.import		_multi_vram_buffer_horz
 	.import		_clear_vram_buffer
 	.import		_get_pad_new
 	.import		_get_frame_count
