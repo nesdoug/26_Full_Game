@@ -296,18 +296,16 @@ void load_room(void){
 void draw_sprites(void){
 	// clear all sprites from sprite buffer
 	oam_clear();
-
-	sprid = 0;
 	
 	temp_x = high_byte(BoxGuy1.x);
 	if(temp_x > 0xfc) temp_x = 1;
 	if(temp_x == 0) temp_x = 1;
 	// draw 1 hero
 	if(direction == LEFT) {
-		sprid = oam_meta_spr(temp_x, high_byte(BoxGuy1.y), sprid, RoundSprL);
+		oam_meta_spr(temp_x, high_byte(BoxGuy1.y), RoundSprL);
 	}
 	else{
-		sprid = oam_meta_spr(temp_x, high_byte(BoxGuy1.y), sprid, RoundSprR);
+		oam_meta_spr(temp_x, high_byte(BoxGuy1.y), RoundSprR);
 	}
 	
 	// draw coin sprites
@@ -320,10 +318,10 @@ void draw_sprites(void){
 		if(temp_x > 0xf0) continue;
 		if(temp_y < 0xf0) {
 			if(coin_type[index] == COIN_REG){
-				sprid = oam_meta_spr(temp_x, temp_y, sprid, CoinSpr);
+				oam_meta_spr(temp_x, temp_y, CoinSpr);
 			}
 			else {
-				sprid = oam_meta_spr(temp_x, temp_y, sprid, BigCoinSpr);
+				oam_meta_spr(temp_x, temp_y, BigCoinSpr);
 			}
 			
 		}
@@ -342,17 +340,17 @@ void draw_sprites(void){
 		if(temp_x == 0) temp_x = 1; // problems with x = 0
 		if(temp_x > 0xf0) continue;
 		if(temp_y < 0xf0) {
-			sprid = oam_meta_spr(temp_x, temp_y, sprid, enemy_anim[index2]);
+			oam_meta_spr(temp_x, temp_y, enemy_anim[index2]);
 		}
 	}
 	
 	
 	//last, draw coin in upper left
-	sprid = oam_meta_spr(0x10, 0x0f, sprid, CoinHud);
+	oam_meta_spr(0x10, 0x0f, CoinHud);
 	temp1 = (coins / 10) + 0xf0;
 	temp2 = (coins % 10) + 0xf0;
-	sprid = oam_spr(0x20, 0x17, temp1, 1, sprid);
-	sprid = oam_spr(0x28, 0x17, temp2, 1, sprid);
+	oam_spr(0x20, 0x17, temp1, 1);
+	oam_spr(0x28, 0x17, temp2, 1);
 }
 	
 
