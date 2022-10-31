@@ -232,6 +232,7 @@ void load_title(void){
 
 
 void load_room(void){
+	clear_vram_buffer();
 	offset = Level_offsets[level];
 	
 	set_data_pointer(Levels_list[offset]);
@@ -741,8 +742,6 @@ void draw_screen_R(void){
 	set_data_pointer(Levels_list[offset]);
 	nt = temp1 & 1;
 	x = pseudo_scroll_x & 0xff;
-	
-	// important that the main loop clears the vram_buffer
 	
 	switch(scroll_count){
 		case 0:
