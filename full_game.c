@@ -3,7 +3,7 @@
  *	, basic platformer
  *	, with coins and enemies
  *	using neslib
- *	Doug Fraker 2018
+ *	Doug Fraker 2018 (edit 2023)
  */	
  
 #include "LIB/neslib.h"
@@ -12,6 +12,10 @@
 #include "full_game.h"
 #include "level_data.c"
 
+
+unsigned char bounce[] = {
+    0,0,0,1,2,2,2,1
+};
 	
 	
 void main (void) {
@@ -35,8 +39,6 @@ void main (void) {
 	while (1){
 		while(game_mode == MODE_TITLE){
 			ppu_wait_nmi();
-			set_music_speed(8);
-			
 			
 			temp1 = get_frame_count();
 			temp1 = (temp1 >> 3) & 3;
@@ -53,11 +55,10 @@ void main (void) {
 				pal_bg(palette_bg);
 				song = SONG_GAME;
 				music_play(song);
-				//lives = 0; // removed this feature, but we could add it later
 				scroll_x = 0;
 				set_scroll_x(scroll_x);
 				ppu_on_all();		
-				pal_bright(4); // back to normal brighness	
+				pal_bright(4); // back to normal brightness	
 			}
 			
 			
@@ -73,9 +74,6 @@ void main (void) {
 		
 			pad1 = pad_poll(0); // read the first controller
 			pad1_new = get_pad_new(0);
-			
-			// there is a visual delay of 1 frame, so properly you should
-			// 1. move user 2.check collisions 3.allow enemy moves 4.draw sprites
 			
 			movement();
 			
@@ -114,19 +112,15 @@ void main (void) {
 				scroll_x = 0;
 				set_scroll_x(scroll_x);
 				ppu_off();
+                clear_vram_buffer();
 				delay(5);
 				
-				//--lives; // removed feature
-				//if(lives > 0x80) { // negative, out of lives
-					oam_clear();
-					game_mode = MODE_GAME_OVER;
-					vram_adr(NAMETABLE_A);
-					vram_fill(0,1024); // blank the screen
-					ppu_on_all();
-				//}
-				//else {
-				//	game_mode = MODE_SWITCH;
-				//}
+                oam_clear();
+                game_mode = MODE_GAME_OVER;
+                vram_adr(NAMETABLE_A);
+                vram_fill(0,1024); // blank the screen
+                ppu_on_all();
+				
 			}
 		}
 		
@@ -200,11 +194,12 @@ void main (void) {
 			set_scroll_x(0);
 			
 			music_stop();
+            game_mode = MODE_RESET;
 		}
 		
 		
 		
-		while(game_mode == MODE_GAME_OVER){
+		while(game_mode == MODE_GAME_OVER){ // you died, death
 			ppu_wait_nmi();
 			oam_clear();
 			
@@ -213,8 +208,34 @@ void main (void) {
 			set_scroll_x(0);
 			
 			music_stop();
+            
+            game_mode = MODE_RESET;
 		}
 		
+        
+        while(game_mode == MODE_RESET){
+            // just sit and wait for a while
+            // then reset if start pressed
+            delay(240); // 4 seconds
+            delay(60); // 1 second
+            
+            while(1){
+                ppu_wait_nmi();
+                pad1 = pad_poll(0); // read the first controller
+                pad1_new = get_pad_new(0);
+                if(pad1_new & PAD_START){
+                    ppu_off();
+                    load_title();
+                    ppu_on_all();
+                    game_mode = MODE_TITLE;
+                    coins = 0;
+                    level = 0;
+                    death = 0;
+                    break;
+                }
+            }
+            
+        }
 	}
 }
 
@@ -299,10 +320,16 @@ void draw_sprites(void){
 	for(index = 0; index < MAX_COINS; ++index){
 		temp_y = coin_y[index];
 		if(temp_y == TURN_OFF) continue;
-		if(get_frame_count() & 8) ++temp_y; // bounce the coin
-		if(!coin_active[index]) continue;
-		temp_x = coin_x[index];
+        if(!coin_active[index]) continue;
+        temp_x = coin_x[index];
 		if(temp_x > 0xf0) continue;
+        
+		// // bounce the coin
+        temp1 = get_frame_count();
+        temp1 = (temp1 >> 2) & 7;
+        temp1 = bounce[temp1];
+        temp_y += temp1;
+        
 		if(temp_y < 0xf0) {
 			if(coin_type[index] == COIN_REG){
 				oam_meta_spr(temp_x, temp_y, CoinSpr);
@@ -351,13 +378,13 @@ void movement(void){
 	
 	if(pad1 & PAD_LEFT){
 		direction = LEFT;
-		if(BoxGuy1.x <= 0x100) {
-			BoxGuy1.vel_x = 0;
-			BoxGuy1.x = 0x100;
-		}
-		else if(BoxGuy1.x < 0x400) { // don't want to wrap around to the other side
-			BoxGuy1.vel_x = -0x100;
-		}
+		
+        if(BoxGuy1.vel_x >= DECEL){
+            BoxGuy1.vel_x -= DECEL;
+        }
+        else if(BoxGuy1.vel_x > 0){
+            BoxGuy1.vel_x = 0;
+        }
 		else {
 			BoxGuy1.vel_x -= ACCEL;
 			if(BoxGuy1.vel_x < -MAX_SPEED) BoxGuy1.vel_x = -MAX_SPEED;
@@ -367,43 +394,63 @@ void movement(void){
 		
 		direction = RIGHT;
 
-		BoxGuy1.vel_x += ACCEL;
-		if(BoxGuy1.vel_x > MAX_SPEED) BoxGuy1.vel_x = MAX_SPEED;
+		if(BoxGuy1.vel_x <= DECEL){
+            BoxGuy1.vel_x += DECEL;
+        }
+        else if(BoxGuy1.vel_x < 0){
+            BoxGuy1.vel_x = 0;
+        }
+		else {
+			BoxGuy1.vel_x += ACCEL;
+			if(BoxGuy1.vel_x >= MAX_SPEED) BoxGuy1.vel_x = MAX_SPEED;
+		}
 	}
 	else { // nothing pressed
-		if(BoxGuy1.vel_x >= 0x100) BoxGuy1.vel_x -= ACCEL;
-		else if(BoxGuy1.vel_x < -0x100) BoxGuy1.vel_x += ACCEL;
+		if(BoxGuy1.vel_x >= ACCEL) BoxGuy1.vel_x -= ACCEL;
+		else if(BoxGuy1.vel_x < -ACCEL) BoxGuy1.vel_x += ACCEL;
 		else BoxGuy1.vel_x = 0;
 	}
 	
 	BoxGuy1.x += BoxGuy1.vel_x;
 	
-	if(BoxGuy1.x > 0xf800) { // make sure no wrap around to the other side
-		BoxGuy1.x = 0x100;
+	if(BoxGuy1.x > 0xf000) { // too far, don't wrap around
+        
+        if(old_x >= 0x8000){
+            BoxGuy1.x = 0xf000; // max right
+        }
+        else{
+            BoxGuy1.x = 0x0000; // max left
+        }
+        
 		BoxGuy1.vel_x = 0;
 	} 
-	
-	L_R_switch = 1; // shinks the y values in bg_coll, less problems with head / feet collisions
 	
 	Generic.x = high_byte(BoxGuy1.x); // this is much faster than passing a pointer to BoxGuy1
 	Generic.y = high_byte(BoxGuy1.y);
 	Generic.width = HERO_WIDTH;
 	Generic.height = HERO_HEIGHT;
-	bg_collision();
-	if(collision_R && collision_L){ // if both true, probably half stuck in a wall
-		BoxGuy1.x = old_x;
-		BoxGuy1.vel_x = 0;
-	}
-	else if(collision_L) {
-		BoxGuy1.vel_x = 0;
-		high_byte(BoxGuy1.x) = high_byte(BoxGuy1.x) - eject_L;
-		
-	}
-	else if(collision_R) {
-		BoxGuy1.vel_x = 0;
-		high_byte(BoxGuy1.x) = high_byte(BoxGuy1.x) - eject_R;
-	} 
-
+	
+    if(BoxGuy1.vel_x < 0){
+        if(bg_coll_L() ){ // check collision left
+            high_byte(BoxGuy1.x) = high_byte(BoxGuy1.x) - eject_L;
+            BoxGuy1.vel_x = 0;
+            if(BoxGuy1.x > 0xf000) {
+                // no wrap around
+                BoxGuy1.x = 0xf000;
+            }
+        }
+    }
+    else if(BoxGuy1.vel_x > 0){
+        if(bg_coll_R() ){ // check collision right
+            high_byte(BoxGuy1.x) = high_byte(BoxGuy1.x) - eject_R;
+            BoxGuy1.vel_x = 0;
+            if(BoxGuy1.x > 0xf000) {
+                // no wrap around
+                BoxGuy1.x = 0x0000;
+            }
+        }
+    }
+    // skip collision if vel = 0
 
 	
 // handle y
@@ -419,29 +466,30 @@ void movement(void){
 	}
 	BoxGuy1.y += BoxGuy1.vel_y;
 	
-	L_R_switch = 0;
-	Generic.x = high_byte(BoxGuy1.x); // the rest should be the same
+	Generic.x = high_byte(BoxGuy1.x);
 	Generic.y = high_byte(BoxGuy1.y);
-	bg_collision();
 	
-	if(collision_U) {
-		high_byte(BoxGuy1.y) = high_byte(BoxGuy1.y) - eject_U;
-		BoxGuy1.vel_y = 0;
-	}
-	else if(collision_D) {
-		high_byte(BoxGuy1.y) = high_byte(BoxGuy1.y) - eject_D;
-		BoxGuy1.y &= 0xff00;
-		if(BoxGuy1.vel_y > 0) {
-			BoxGuy1.vel_y = 0;
-		}
-	}
-
-
+    if(BoxGuy1.vel_y > 0){
+        if(bg_coll_D() ){ // check collision below
+            high_byte(BoxGuy1.y) = high_byte(BoxGuy1.y) - eject_D;
+            BoxGuy1.y &= 0xff00;
+            if(BoxGuy1.vel_y > 0) {
+                BoxGuy1.vel_y = 0;
+            }
+        }
+    }
+    else if(BoxGuy1.vel_y < 0){
+        if(bg_coll_U() ){ // check collision above
+            high_byte(BoxGuy1.y) = high_byte(BoxGuy1.y) - eject_U;
+            BoxGuy1.vel_y = 0;
+        }
+    }
+    
 	// check collision down a little lower than hero
 	Generic.y = high_byte(BoxGuy1.y); // the rest should be the same
-	bg_check_low();
-	if(collision_D) {
-		if(pad1_new & PAD_A) {
+	
+	if(pad1_new & PAD_A) {
+        if(bg_coll_D2() ) {
 			BoxGuy1.vel_y = JUMP_VEL; // JUMP
 			sfx_play(SFX_JUMP, 0);
 			short_jump_count = 1;
@@ -475,6 +523,7 @@ void movement(void){
 	temp5 = BoxGuy1.x;
 	if (BoxGuy1.x > MAX_RIGHT){
 		temp1 = (BoxGuy1.x - MAX_RIGHT) >> 8;
+        if (temp1 > 3) temp1 = 3; // max scroll change
 		scroll_x += temp1;
 		high_byte(BoxGuy1.x) = high_byte(BoxGuy1.x) - temp1;
 	}
@@ -545,19 +594,23 @@ void enemy_moves(void){
 		Generic.x = enemy_x[index];
 		Generic.y = enemy_y[index] + 6; // mid point
 		Generic.width = 13;
+        Generic.height = 15;
+        
+        // note, Generic2 is the hero's x position
 		
 		enemy_anim[index] = EnemyChaseSpr;
 		if(enemy_frames & 1) return; // half speed
 		if(enemy_x[index] > Generic2.x){
-			Generic.x -= 1;
-			bg_collision_fast();
+			Generic.x -= 1; // test going left
+            bg_collision_fast();
 			if(collision_L) return;
+            // else, no collision, do the move.
 			if(enemy_actual_x[index] == 0) --enemy_room[index];
 			--enemy_actual_x[index];
 		}
-		else if(enemy_x[index] < Generic2.x){ //Generic2 = hero.x, high byte
-			Generic.x += 1;
-			bg_collision_fast();
+		else if(enemy_x[index] < Generic2.x){
+			Generic.x += 1; // test going right
+            bg_collision_fast();
 			if(collision_R) return;
 			++enemy_actual_x[index];
 			if(enemy_actual_x[index] == 0) ++enemy_room[index];
@@ -565,25 +618,40 @@ void enemy_moves(void){
 	}
 	else if(enemy_type[index] == ENEMY_BOUNCE){
 		temp1 = enemy_frames + (index << 3);
-		if((temp1 & 0x3f) < 16){
+        temp1 &= 0x3f;
+		if(temp1 < 16){ // stand still
 			enemy_anim[index] = EnemyBounceSpr;
 		}
-		else if((temp1 & 0x3f) < 40){
-			--enemy_y[index];
+        else if(temp1 < 22){
+			--enemy_y[index]; // jump
+            --enemy_y[index]; // jump faster
 			enemy_anim[index] = EnemyBounceSpr2;
 		}
+		else if(temp1 < 42){
+			--enemy_y[index]; // jump
+			enemy_anim[index] = EnemyBounceSpr2;
+		}
+        else if(temp1 < 44){ // use short anim. 2 frames
+            --enemy_y[index]; // jump
+            enemy_anim[index] = EnemyBounceSpr;
+        }
 		else {
+            ++enemy_y[index]; // fall
+            if(temp1 < 62){
+                ++enemy_y[index]; // fall faster
+            }
 			enemy_anim[index] = EnemyBounceSpr2;
 			temp1 = enemy_y[index];
 			//check ground collision
-			Generic.x = enemy_x[index]; // this is faster than passing a pointer
-			Generic.y = enemy_y[index] - 1;
+			Generic.x = enemy_x[index];
+			Generic.y = enemy_y[index];
 			Generic.width = 15;
-			Generic.height = 15;
-			bg_check_low();
-			if(!collision_D){
-				++enemy_y[index];
+			Generic.height = 14;
+			
+			if(bg_coll_D()){
+				enemy_y[index] -= eject_D;
 			}
+            
 		}
 	}
 
@@ -594,130 +662,154 @@ void enemy_moves(void){
 
 void bg_collision_fast(void){
 	// rewrote this for enemies, bg_collision was too slow
+    // test 1 point on each side
+    
 	collision_L = 0;
 	collision_R = 0;
-	
+    
 	if(Generic.y >= 0xf0) return;
 	
-	temp6 = temp5 = Generic.x + scroll_x; // upper left (temp6 = save for reuse)
-	temp1 = temp5 & 0xff; // low byte x
-	temp2 = temp5 >> 8; // high byte x
+	temp5 = Generic.x + scroll_x;
+	temp_x = temp5 & 0xff; // low byte x
+	temp_room = temp5 >> 8; // high byte x
 	
-	temp3 = Generic.y; // y top
+	temp_y = Generic.y + 6; // y middle
 	
 	bg_collision_sub();
 	
-	if(collision & COL_ALL){ // find a corner in the collision map
+	if(bg_collision_sub() & COL_ALL){
 		++collision_L;
 	}
 	
-	// upper right
+	// right side
 	temp5 += Generic.width;
-	temp1 = temp5 & 0xff; // low byte x
-	temp2 = temp5 >> 8; // high byte x
+	temp_x = temp5 & 0xff; // low byte x
+	temp_room = temp5 >> 8; // high byte x
 	
-	// temp3 is unchanged
+	// temp_y is unchanged
 	bg_collision_sub();
 	
-	if(collision & COL_ALL){ // find a corner in the collision map
+	if(bg_collision_sub() & COL_ALL){ // find a corner in the collision map
 		++collision_R;
 	}
 }
 
 
 
+char bg_coll_L(void){
+    // check 2 points on the left side
+    temp5 = Generic.x + scroll_x;
+    temp_x = (char)temp5; // low byte
+    temp_room = temp5 >> 8; // high byte
+    
+    eject_L = temp_x | 0xf0;
+    temp_y = Generic.y + 2;
+    if(bg_collision_sub() & COL_ALL) return 1;
+    
+    temp_y = Generic.y + Generic.height;
+    temp_y -= 2;
+    if(bg_collision_sub() & COL_ALL) return 1;
+    
+    return 0;
+}
 
-void bg_collision(void){
-	// note, uses bits in the metatile data to determine collision
-	// sprite collision with backgrounds
-	// load the object's x,y,width,height to Generic, then call this
-	
+char bg_coll_R(void){
+    // check 2 points on the right side
+    temp5 = Generic.x + scroll_x + Generic.width;
+    temp_x = (char)temp5; // low byte
+    temp_room = temp5 >> 8; // high byte
+    
+    eject_R = (temp_x + 1) & 0x0f;
+    temp_y = Generic.y + 2;
+    if(bg_collision_sub() & COL_ALL) return 1;
+    
+    temp_y = Generic.y + Generic.height;
+    temp_y -= 2;
+    if(bg_collision_sub() & COL_ALL) return 1;
+    
+    return 0;
+}
 
-	collision_L = 0;
-	collision_R = 0;
-	collision_U = 0;
-	collision_D = 0;
-	
-	if(Generic.y >= 0xf0) return;
-	
-	temp6 = temp5 = Generic.x + scroll_x; // upper left (temp6 = save for reuse)
-	temp1 = temp5 & 0xff; // low byte x
-	temp2 = temp5 >> 8; // high byte x
-	
-	eject_L = temp1 | 0xf0;
-	
-	temp3 = Generic.y; // y top
-	
-	eject_U = temp3 | 0xf0;
-	
-	if(L_R_switch) temp3 += 2; // fix bug, walking through walls
-	
-	bg_collision_sub();
-	
-	if(collision & COL_ALL){ // find a corner in the collision map
-		++collision_L;
-		++collision_U;
-	}
-	
-	// upper right
-	temp5 += Generic.width;
-	temp1 = temp5 & 0xff; // low byte x
-	temp2 = temp5 >> 8; // high byte x
-	
-	eject_R = (temp1 + 1) & 0x0f;
-	
-	// temp3 is unchanged
-	bg_collision_sub();
-	
-	if(collision & COL_ALL){ // find a corner in the collision map
-		++collision_R;
-		++collision_U;
-	}
-	
-	
-	// again, lower
-	
-	// bottom right, x hasn't changed
-	
-	temp3 = Generic.y + Generic.height; //y bottom
-	if(L_R_switch) temp3 -= 2; // fix bug, walking through walls
-	eject_D = (temp3 + 1) & 0x0f;
-	if(temp3 >= 0xf0) return;
-	
-	bg_collision_sub();
-	
-	if(collision & COL_ALL){ // find a corner in the collision map
-		++collision_R;
-	}
-	if(collision & (COL_DOWN|COL_ALL)){ // find a corner in the collision map
-		++collision_D;
-	}
-	
-	// bottom left
-	temp1 = temp6 & 0xff; // low byte x
-	temp2 = temp6 >> 8; // high byte x
-	
-	//temp3, y is unchanged
+char bg_coll_U(void){
+    // check 2 points on the top side
+    temp5 = Generic.x + scroll_x;
+    temp5 += 2;
+    temp_x = (char)temp5; // low byte
+    temp_room = temp5 >> 8; // high byte
+    
+    temp_y = Generic.y;
+    eject_U = temp_y | 0xf0;
+    if(bg_collision_sub() & COL_ALL) return 1;
+    
+    temp5 = Generic.x + scroll_x + Generic.width;
+    temp5 -= 2;
+    temp_x = (char)temp5; // low byte
+    temp_room = temp5 >> 8; // high byte
+    
+    if(bg_collision_sub() & COL_ALL) return 1;
+    
+    return 0;
+}
 
-	bg_collision_sub();
-	
-	if(collision & COL_ALL){ // find a corner in the collision map
-		++collision_L;
-	}
-	if(collision & (COL_DOWN|COL_ALL)){ // find a corner in the collision map
-		++collision_D;
-	}
+char bg_coll_D(void){
+    // check 2 points on the bottom side
+    temp5 = Generic.x + scroll_x;
+    temp5 += 2;
+    temp_x = (char)temp5; // low byte
+    temp_room = temp5 >> 8; // high byte
+    
+    temp_y = Generic.y + Generic.height;
+    
+    if((temp_y & 0x0f) > 3) return 0; // bug fix
+    // so we don't snap to those platforms
+    // don't fall too fast, or might miss it.
+    
+    eject_D = (temp_y + 1) & 0x0f;
+    
+    if(bg_collision_sub() ) return 1;
+    
+    temp5 = Generic.x + scroll_x + Generic.width;
+    temp5 -= 2;
+    temp_x = (char)temp5; // low byte
+    temp_room = temp5 >> 8; // high byte
+    
+    if(bg_collision_sub() ) return 1;
+    
+    return 0;
+}
 
-	if((temp3 & 0x0f) > 3) collision_D = 0; // for platforms, only collide with the top 3 pixels
-
+char bg_coll_D2(void){
+    // check 2 points on the bottom side
+    // a little lower, for jumping
+    temp5 = Generic.x + scroll_x;
+    temp5 += 2;
+    temp_x = (char)temp5; // low byte
+    temp_room = temp5 >> 8; // high byte
+    
+    temp_y = Generic.y + Generic.height;
+    temp_y += 2;
+    if(bg_collision_sub() ) return 1;
+    
+    temp5 = Generic.x + scroll_x + Generic.width;
+    temp5 -= 2;
+    temp_x = (char)temp5; // low byte
+    temp_room = temp5 >> 8; // high byte
+    
+    if(bg_collision_sub() ) return 1;
+    
+    return 0;
 }
 
 
 
-void bg_collision_sub(void){
-	coordinates = (temp1 >> 4) + (temp3 & 0xf0);
+
+char bg_collision_sub(void){
+    if(temp_y >= 0xf0) return 0;
+    
+	coordinates = (temp_x >> 4) + (temp_y & 0xf0);
+    // we just need 4 bits each from x and y
 	
-	map = temp2&1; // high byte
+	map = temp_room&1; // high byte
 	if(!map){
 		collision = c_map[coordinates];
 	}
@@ -725,7 +817,7 @@ void bg_collision_sub(void){
 		collision = c_map2[coordinates];
 	}
 	
-	collision = is_solid[collision];
+    return is_solid[collision];
 }
 
 
@@ -807,44 +899,6 @@ void new_cmap(void){
 	}
 }
 
-
-
-
-void bg_check_low(void){
-
-	// floor collisions
-	collision_D = 0;
-	
-	temp5 = Generic.x + scroll_x;    //left
-	temp1 = temp5 & 0xff; //low byte
-	temp2 = temp5 >> 8; //high byte
-	
-	temp3 = Generic.y + Generic.height + 1; // bottom
-	
-	if(temp3 >= 0xf0) return;
-	
-	bg_collision_sub();
-	
-	if(collision & (COL_DOWN|COL_ALL)){ // find a corner in the collision map
-		++collision_D;
-	}
-	
-	
-	//temp5 = right
-	temp5 += Generic.width;
-	temp1 = temp5 & 0xff; //low byte
-	temp2 = temp5 >> 8; //high byte
-	
-	//temp3 is unchanged
-	bg_collision_sub();
-	
-	if(collision & (COL_DOWN|COL_ALL)){ // find a corner in the collision map
-		++collision_D;
-	}
-	
-	if((temp3 & 0x0f) > 3) collision_D = 0; // for platforms, only collide with the top 3 pixels
-
-}
 
 
 

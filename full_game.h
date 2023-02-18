@@ -1,5 +1,6 @@
-#define ACCEL 0x30
-#define GRAVITY 0x50
+#define ACCEL 30
+#define DECEL 50
+#define GRAVITY 0x4c
 #define MAX_SPEED 0x240
 #define JUMP_VEL -0x600
 #define MAX_RIGHT 0x9000
@@ -45,7 +46,7 @@ unsigned char scroll_count;
 unsigned int pseudo_scroll_x;
 //unsigned int pseudo_scroll_y;
 unsigned char L_R_switch;
-unsigned char old_x;
+unsigned int old_x;
 //unsigned char old_y;
 unsigned char temp_x;
 unsigned char temp_y;
@@ -55,7 +56,8 @@ enum {SONG_GAME, SONG_PAUSE};
 enum {SFX_JUMP, SFX_DING, SFX_NOISE};
 
 unsigned char game_mode;
-enum {MODE_TITLE, MODE_GAME, MODE_PAUSE, MODE_SWITCH, MODE_END, MODE_GAME_OVER};
+enum {MODE_TITLE, MODE_GAME, MODE_PAUSE, MODE_SWITCH, MODE_END, 
+MODE_GAME_OVER, MODE_RESET};
 
 unsigned char coins;
 unsigned char lives;
@@ -70,6 +72,8 @@ unsigned char timer;
 unsigned char enemy_frames; //in case of skipped frames
 unsigned char map_loaded; //only load it once
 unsigned char short_jump_count;
+
+unsigned char temp_room;
 
 
 #pragma bss-name(push, "BSS")
@@ -154,18 +158,21 @@ const unsigned char title_color_rotate[]={
 
 
 const unsigned char palette_bg[]={
-0x22, 0x16, 0x36, 0x0f,
-0, 8, 0x18, 0x39,
-0, 0, 0x10, 0x20,
-0, 0x0a, 0x1a, 0x2a
-}; 
+0x22,0x16,0x26,0x06,
+0x22,0x17,0x19,0x29,
+0x22,0x17,0x07,0x10,
+0x22,0x08,0x19,0x29 
+};
+
+
+
 
 
 
 const unsigned char palette_sp[]={
 0x22, 0x01, 0x11, 0x10,
 0x22, 0x17, 0x28, 0x38,
-0x22, 0x06, 0x16, 0x37,
+0x22, 0x0c, 0x2c, 0x30,
 0x22, 0x03, 0x13, 0x33,
 }; 
 
@@ -191,11 +198,9 @@ void load_title(void);
 void load_room(void);
 void draw_sprites(void);
 void movement(void);	
-void bg_collision(void);
 void draw_screen_R(void);
 void new_cmap(void);
-void bg_collision_sub(void);
-void bg_check_low(void);
+char bg_collision_sub(void);
 char get_position(void);
 void enemy_moves(void);
 void sprite_collisions(void);
@@ -204,3 +209,10 @@ void sprite_obj_init(void);
 void set_sprite_zero(void);
 void update_hud(void);
 void bg_collision_fast(void);
+
+char bg_coll_L(void);
+char bg_coll_R(void);
+char bg_coll_U(void);
+char bg_coll_D(void);
+char bg_coll_D2(void);
+
